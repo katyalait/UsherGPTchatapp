@@ -1,19 +1,32 @@
+import os
 from typing import List
 
 from langchain.agents import initialize_agent, load_tools, AgentType, AgentExecutor
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.chat_models import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
+from huggingface_hub import AsyncInferenceClient
 
 from chat.messages.chat_message_repository import ChatMessageRepository
 from chat.models import MessageSender, ChatMessage
 from project import settings
+
+EMBEDDING_MODEL = "text-embedding-ada-002"
+GPT_MODEL = "gpt-4"
+MED_MODEL = "medalpaca/medalpaca-7b"
 
 
 class AgentFactory:
 
     def __init__(self):
         self.chat_message_repository = ChatMessageRepository()
+
+    async def create_client(self):
+        client = AsyncInferenceClient(
+            model=os.environ['INFERENCE_MODEL_URL'],
+            token=os.environ['INFERENCE_TOKEN']
+        )
+        return client
 
     async def create_agent(
         self,

@@ -6,6 +6,7 @@ import django
 from chat.agents.agent_factory import AgentFactory
 from chat.agents.callbacks import AsyncStreamingCallbackHandler
 from chat.messages.chat_message_repository import ChatMessageRepository
+from huggingface_hub import AsyncInferenceClient
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'project.settings')
 django.setup()
@@ -19,6 +20,7 @@ from chat.models import MessageSender
 class ChatConsumer(AsyncWebsocketConsumer):
     # The LLM agent for this chat application
     agent: AgentExecutor
+    inference_client: AsyncInferenceClient
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -36,6 +38,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             streaming=True,
             callback_handlers=[AsyncStreamingCallbackHandler(self)],
         )
+        self.inference_client = await self.agent_factory.create_client()
 
         await self.accept()
 
@@ -64,6 +67,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.chat_message_repository.save_message(message=response, sender=MessageSender.AI.value, chat_id=chat_id)
 
         return response
+
+    async def message_client(self, message: str, chat_id: str):
+        # Save the user message to the database
+        await self.chat_message_repository.save_message(message=message, sender=MessageSender.USER.value,
+                                                        chat_id=chat_id)
+
+        prompt = f"Instructions: Make your answer less than 500 words. Question: {message}\n Answer: "
+
+        generated_text = await self.inference_client.text_generation(prompt=prompt, max_new_tokens=420)
+        # generated_text += token  # Concatenate each token
+        print(generated_text, end="")
+
+        # Save the AI message to the database
+        await self.chat_message_repository.save_message(message=generated_text, sender=MessageSender.AI.value,
+                                                        chat_id=chat_id)
+
+        return generated_text
 
     def my_callback(self, message):
         print("Callback received:", message)
